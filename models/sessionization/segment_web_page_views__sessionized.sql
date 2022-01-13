@@ -70,6 +70,22 @@ numbered as (
 
 ),
 
+fill_fields as (
+
+    select
+
+        *,
+
+        first_value(utm_campaign) over (
+            partition by anonymous_id, utm_campaign
+            order by tstamp
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+            ) as fill_utm_campaign
+
+    from numbered
+
+),
+
 lagged as (
 
     --This CTE is responsible for simply grabbing the last value of `tstamp`.
@@ -83,9 +99,14 @@ lagged as (
         lag(tstamp) over (
             partition by anonymous_id
             order by page_view_number
-            ) as previous_tstamp
+            ) as previous_tstamp,
 
-    from numbered
+        lag(fill_utm_campaign) over (
+            partition by anonymous_id
+            order by page_view_number
+            ) as previous_fill_utm_campaign
+
+    from fill_fields
 
 ),
 
@@ -95,7 +116,14 @@ diffed as (
 
     select
         *,
-        {{ dbt_utils.datediff('previous_tstamp', 'tstamp', 'second') }} as period_of_inactivity
+        {{ dbt_utils.datediff('previous_tstamp', 'tstamp', 'second') }} as period_of_inactivity,
+        case
+            when fill_utm_campaign is null and previous_fill_utm_campaign is null then false
+            when fill_utm_campaign is null and previous_fill_utm_campaign is not null then true
+            when fill_utm_campaign is not null and previous_fill_utm_campaign is null then true
+            when fill_utm_campaign != previous_fill_utm_campaign then true
+            else false
+        end as is_new_campaign
     from lagged
 
 ),
@@ -110,6 +138,7 @@ new_sessions as (
         *,
         case
             when period_of_inactivity <= {{var('segment_inactivity_cutoff')}} then 0
+            when is_new_campaign is false then 0
             else 1
         end as new_session
     from diffed

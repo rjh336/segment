@@ -6,7 +6,8 @@ profile: 'integration_tests'
 
 vars:
   segment:
-    segment_page_views_table: "{{ ref('example_segment_pages') }}"
+    segment_page_views_table: bnb-data-edw-prod.segment_integration_tests_bigquery.stg_segment_all_pages_user_stitched_copy
+ #"{{ ref('example_segment_pages') }}"
 
 seeds:
   +quote_columns: false

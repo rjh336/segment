@@ -137,9 +137,9 @@ new_sessions as (
     select
         *,
         case
-            when period_of_inactivity <= {{var('segment_inactivity_cutoff')}} then 0
-            when is_new_campaign is false then 0
-            else 1
+            when period_of_inactivity > {{var('segment_inactivity_cutoff')}} then 1
+            when is_new_campaign is true then 1
+            else 0
         end as new_session
     from diffed
 

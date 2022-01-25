@@ -119,7 +119,7 @@ diffed as (
         {{ dbt_utils.datediff('previous_tstamp', 'tstamp', 'second') }} as period_of_inactivity,
         case
             when fill_utm_campaign is null and previous_fill_utm_campaign is null then false
-            when fill_utm_campaign is null and previous_fill_utm_campaign is not null then true
+            when fill_utm_campaign is null and previous_fill_utm_campaign is not null then false
             when fill_utm_campaign is not null and previous_fill_utm_campaign is null then true
             when fill_utm_campaign != previous_fill_utm_campaign then true
             else false

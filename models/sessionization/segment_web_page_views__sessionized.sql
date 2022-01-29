@@ -70,17 +70,26 @@ numbered as (
 
 ),
 
+{% set fill_fields = [
+    'utm_medium', 
+    'utm_source', 
+    'utm_campaign', 
+    'gclid'] 
+%}
+
 fill_fields as (
 
     select
 
         *,
-
-        first_value(utm_campaign) over (
-            partition by anonymous_id, utm_campaign
-            order by tstamp
-            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-            ) as fill_utm_campaign
+        
+        {% for field in fill_fields %}
+            first_value({{field}}) over (
+                partition by anonymous_id, {{field}}
+                order by tstamp
+                rows between unbounded preceding and unbounded following
+            ) as fill_{{field}} {% if not loop.last %} , {% endif %}
+        {% endfor %}
 
     from numbered
 
@@ -99,12 +108,14 @@ lagged as (
         lag(tstamp) over (
             partition by anonymous_id
             order by page_view_number
-            ) as previous_tstamp,
+        ) as previous_tstamp,
 
-        lag(fill_utm_campaign) over (
+        {% for field in fill_fields %}
+        lag(fill_{{field}}) over (
             partition by anonymous_id
             order by page_view_number
-            ) as previous_fill_utm_campaign
+        ) as previous_fill_{{field}} {% if not loop.last %} , {% endif %}
+        {% endfor %}
 
     from fill_fields
 
@@ -115,15 +126,21 @@ diffed as (
     --This CTE simply calculates `period_of_inactivity`.
 
     select
+    
         *,
+
         {{ dbt_utils.datediff('previous_tstamp', 'tstamp', 'second') }} as period_of_inactivity,
+
+        {% for field in fill_fields %}
         case
-            when fill_utm_campaign is null and previous_fill_utm_campaign is null then false
-            when fill_utm_campaign is null and previous_fill_utm_campaign is not null then false
-            when fill_utm_campaign is not null and previous_fill_utm_campaign is null then true
-            when fill_utm_campaign != previous_fill_utm_campaign then true
+            when fill_{{field}} is null and previous_fill_{{field}} is null then false
+            when fill_{{field}} is null and previous_fill_{{field}} is not null then false
+            when fill_{{field}} is not null and previous_fill_{{field}} is null then true
+            when fill_{{field}} != previous_fill_{{field}} then true
             else false
-        end as is_new_campaign
+        end as is_new_{{field}} {% if not loop.last %} , {% endif %}
+        {% endfor %}
+
     from lagged
 
 ),
@@ -135,12 +152,17 @@ new_sessions as (
     --it's 0. We'll use this to calculate the user's session #.
 
     select
+
         *,
+
         case
             when period_of_inactivity > {{var('segment_inactivity_cutoff')}} then 1
-            when is_new_campaign is true then 1
+            {% for field in fill_fields %}
+            when is_new_{{field}} is true then 1
+            {% endfor %}
             else 0
         end as new_session
+
     from diffed
 
 ),
